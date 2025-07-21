@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from '@tauri-apps/api/event';
 
 function EditArea() {
   const [content, setContent] = useState<string>('');
@@ -35,10 +36,23 @@ function EditArea() {
   }, [lineCount]);
 
   const saveFile = () => {invoke("save_file", {fileContent: content});}
+  const loadFile = () => {invoke("load_file")}
+
+  type FileLoaded = {
+    fileName: string,
+    content: string
+  }
+
+  listen<FileLoaded>('file-loaded', (e) => {
+    setContent(e.payload.content)
+  })
 
   return (
     <div>
-      <button className="hover:text-red-500" onClick={saveFile}>Save</button>
+      <div>
+        <button className="hover:text-blue-500 pr-5" onClick={saveFile}>Save</button>
+        <button className="hover:text-blue-500" onClick={loadFile}>Load</button>
+      </div>
       <div className="flex flex-col w-full max-h-screen h-[100vh] bg-gray-800 overflow-hidden">
         {/* Editor Wrapper: Contains line numbers and textarea */}
         <div className="flex flex-1 overflow-hidden relative">
