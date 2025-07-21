@@ -1,50 +1,69 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  // State to hold the content of the textarea
+  const [content, setContent] = useState<string>('');
+  // State to hold the number of lines, derived from content
+  const [lineCount, setLineCount] = useState<number>(1);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  // Refs to get direct access to the textarea and line number container DOM elements
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+
+  // Effect to update line count whenever content changes
+  useEffect(() => {
+    // Split content by newline characters to count lines
+    // Add 1 because even empty content has 1 line
+    setLineCount(content.split('\n').length);
+  }, [content]);
+
+  // Handle changes in the textarea
+  const handleContentChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent(event.target.value);
+  }, []);
+
+  // Synchronize scrolling between the textarea and the line numbers
+  const handleScroll = useCallback(() => {
+    if (textareaRef.current && lineNumbersRef.current) {
+      // Set the scroll position of the line numbers div to match the textarea
+      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  }, []);
+
+  // Generate line number elements
+  const renderLineNumbers = useCallback(() => {
+    const numbers = [];
+    for (let i = 1; i <= lineCount; i++) {
+      // Use 'leading-6' to match the 'line-height: 1.5em' (which is 24px for default 16px font)
+      numbers.push(<div key={i} className="line-number h-6 flex items-center justify-end pr-2">{i}</div>);
+    }
+    return numbers;
+  }, [lineCount]);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+      <div className="flex flex-col w-full max-h-screen h-[100vh] bg-gray-800 overflow-hidden">
+        {/* Editor Wrapper: Contains line numbers and textarea */}
+        <div className="flex flex-1 overflow-hidden relative">
+          {/* Line Numbers Pane */}
+          <div
+            className="flex-shrink-0 w-12 bg-gray-50 text-gray-500 text-sm text-right px-5 py-2 border-r border-gray-200 overflow-hidden select-none resize-x"
+            ref={lineNumbersRef}
+          >
+            {renderLineNumbers()}
+          </div>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+          {/* Text Input Area */}
+          <textarea
+            ref={textareaRef}
+            className="flex-1 w-full p-2 text-base leading-6 bg-white resize-none overflow-y-auto text-nowrap focus:outline-none focus:ring-0"
+            value={content}
+            onChange={handleContentChange}
+            onScroll={handleScroll}
+            placeholder="Start typing here..."
+            spellCheck={false}
+          />
+        </div>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
   );
 }
 
