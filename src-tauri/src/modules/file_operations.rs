@@ -5,31 +5,31 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
-pub fn save_file(app: AppHandle, file_content: String) {
-    println!("save file invoked");
-    let file_path = app
+pub fn save_file(app: AppHandle, file_content: String) -> Result<(), String>  {
+    let file_path = match app
         .dialog()
         .file()
         .set_file_name("untitled")
         .add_filter("Markdown", &["md", "markdown"])
         .add_filter("Text File", &["txt"])
-        .blocking_save_file();
+        .blocking_save_file() 
+    {
+        Some(fp) => fp,
+        None => return Err("File save dialog was cancelled or failed.".to_string())
+    };
 
-    match file_path {
-        Some(path) => {
-            match path.as_path() {
-                Some(p) => {
-                    match write(&p, file_content) {
-                        Ok(_) => println!("File successfully saved to: {:?}", path),
-                        Err(e) => eprintln!("Failed to save file to {}: {:?}", path, e),
-                    }
-                },
-                None => println!("File save dialog was cancelled or failed.")
-            }
+    let path = match file_path.as_path() {
+        Some(p) => p,
+        None => return Err("File save dialog was cancelled or failed.".to_string())
+    };
 
-        },
-        None => println!("File save dialog was cancelled or failed."),
-    }
+    let write_res = write(&path, file_content);
+
+    if write_res.is_err() {
+        return write_res.map_err(|e| format!("Failed to save file: {:?}", e))
+    };
+
+    Ok(())
 }
 
 #[derive(Clone, Serialize)]
