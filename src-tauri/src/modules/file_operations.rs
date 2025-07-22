@@ -1,8 +1,11 @@
 use std::fs::{write, read_to_string};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
-use tauri_plugin_dialog::DialogExt;
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::{DialogExt, FilePath};
+
+use super::AppData;
 
 #[tauri::command]
 pub fn save_file(app: AppHandle, file_content: String) -> Result<(), String>  {
@@ -79,4 +82,29 @@ fn get_file_content(path: &Path) -> Option<String> {
             None
         }
     }
+}
+
+#[tauri::command]
+pub fn open_directory(app: AppHandle) -> Result<(), String> {
+    let file_path: FilePath = match app
+        .dialog()
+        .file()
+        .blocking_pick_folder()
+         
+    {
+        Some(path) => path,
+        None => return Err("File dialog was cancelled or no file selected".to_string())
+    };
+
+    let path = match file_path.as_path() {
+        Some(p) => p,
+        None => return Err("File dialog was cancelled or no file selected".to_string())
+    };
+
+    println!("Open folder: {}", path.display());
+    let state= app.state::<Mutex<AppData>>();
+    let mut data = state.lock().unwrap();
+    data.project_path = Some(path.to_path_buf()); // Convert to PathBuf
+    app.emit("folder-selected", path.display().to_string()).unwrap();
+    Ok(())
 }
