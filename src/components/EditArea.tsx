@@ -44,7 +44,7 @@ function EditArea() {
     setContent(e.payload.content)
   })
 
-  listen<FileLoaded>('save', (e) => {
+  listen<FileLoaded>('save', () => {
     invoke("save_file", {fileContent: content})
   })
 
