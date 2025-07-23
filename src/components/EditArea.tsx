@@ -47,12 +47,12 @@ function EditArea() {
     setContent(e.payload.content)
   })
 
+  listen<FileLoaded>('save', (e) => {
+    saveFile()
+  })
+
   return (
     <div>
-      <div>
-        <button className="hover:text-blue-500 pr-5" onClick={saveFile}>Save</button>
-        <button className="hover:text-blue-500" onClick={loadFile}>Load</button>
-      </div>
       <div className="flex flex-col w-full max-h-screen h-[100vh] bg-gray-800 overflow-hidden">
         {/* Editor Wrapper: Contains line numbers and textarea */}
         <div className="flex flex-1 overflow-hidden relative">

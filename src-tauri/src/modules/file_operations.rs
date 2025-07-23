@@ -1,4 +1,4 @@
-use std::fs::{write, read_to_string};
+use std::fs::{read_dir, read_to_string, write};
 use std::path::{Path, PathBuf};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -106,5 +106,40 @@ pub fn open_directory(app: AppHandle) -> Result<(), String> {
     let mut data = state.lock().unwrap();
     data.project_path = Some(path.to_path_buf()); // Convert to PathBuf
     app.emit("folder-selected", path.display().to_string()).unwrap();
+
+    explore_folder(path.to_path_buf());
+    
+    Ok(())
+}
+
+fn explore_folder(path_buf: PathBuf) -> Result<(), String> {
+    let path = path_buf.as_path();
+    if !path.is_dir() {
+        return Err("Path is not directory".to_string())
+    }
+
+    let entries= match read_dir(path) {
+        Ok(entries) => entries,
+        Err(e) => {
+            eprintln!("{}", e); // debugging
+            return Err("something went wrong!".to_string());
+        }
+    };
+
+    println!("File Discovered");
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("{}", e); // debugging
+                return Err("something went wrong!".to_string());
+            }
+        };
+        let path = entry.path();
+        println!("- {}", path.as_path().display());
+
+    }
+
+
     Ok(())
 }
