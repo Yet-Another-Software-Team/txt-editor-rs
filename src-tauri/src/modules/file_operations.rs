@@ -43,7 +43,11 @@ struct FileData {
 }
 
 #[tauri::command]
-pub fn load_file(app: AppHandle) -> Result<(), String> {
+pub fn load_file(app: AppHandle, path: Option<String>) -> Result<(), String> {
+    return if path.is_none() { load_dialog(app) } else { load_path(app, path.unwrap()) }
+}
+
+fn load_dialog(app: AppHandle) -> Result<(), String> {
     let file_path = match app
         .dialog()
         .file()
@@ -71,6 +75,24 @@ pub fn load_file(app: AppHandle) -> Result<(), String> {
         content
     }).map_err(|e| format!("Failed to emit event: {}", e))?;
     
+    Ok(())
+}
+
+fn load_path(app: AppHandle, path_str: String) -> Result<(), String> {
+    let path_buf = PathBuf::from(path_str);
+    let path =  path_buf.as_path();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    let content = get_file_content(path).unwrap_or(String::from(""));
+
+    app.emit("file-loaded", FileData {
+        file_name,
+        content
+    }).map_err(|e| format!("Failed to emit event: {}", e))?;
     Ok(())
 }
 
@@ -106,40 +128,25 @@ pub fn open_directory(app: AppHandle) -> Result<(), String> {
     let mut data = state.lock().unwrap();
     data.project_path = Some(path.to_path_buf()); // Convert to PathBuf
     app.emit("folder-selected", path.display().to_string()).unwrap();
-
-    explore_folder(path.to_path_buf());
-    
     Ok(())
 }
 
-fn explore_folder(path_buf: PathBuf) -> Result<(), String> {
-    let path = path_buf.as_path();
-    if !path.is_dir() {
-        return Err("Path is not directory".to_string())
-    }
-
-    let entries= match read_dir(path) {
-        Ok(entries) => entries,
-        Err(e) => {
-            eprintln!("{}", e); // debugging
-            return Err("something went wrong!".to_string());
-        }
+#[tauri::command]
+pub fn read_directory_contents(app: AppHandle, path: String) -> Result<Vec<(String, bool)>, String> {
+    let paths = match read_dir(&path) {
+        Ok(paths) => paths,
+        Err(e) => return Err(format!("Error reading directory: {}", e)),
     };
 
-    println!("File Discovered");
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(e) => {
-                eprintln!("{}", e); // debugging
-                return Err("something went wrong!".to_string());
-            }
-        };
-        let path = entry.path();
-        println!("- {}", path.as_path().display());
-
+    let mut contents = Vec::new();
+    for entry in paths {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            let is_dir = path.is_dir();
+            let file_name = path.to_string_lossy().into_owned();
+            contents.push((file_name, is_dir));
+        }
     }
-
-
-    Ok(())
+    
+    Ok(contents)
 }

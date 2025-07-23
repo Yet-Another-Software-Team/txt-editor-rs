@@ -25,7 +25,7 @@ pub fn run() {
             app.on_menu_event(move |app_handle: &tauri::AppHandle, event| {
                     match event.id().0.as_str() {
                         "save" => {app_handle.clone().emit("save", "").unwrap()},
-                        "open" => {let _ = modules::file_operations::load_file(app_handle.clone()); },
+                        "open" => {let _ = modules::file_operations::load_file(app_handle.clone(), None); },
                         "open_dir" => {let _ = modules::file_operations::open_directory(app_handle.clone()); },
                         "quit" => {app_handle.clone().exit(0);},
                         _ => eprintln!("unexpected menu event")
@@ -39,7 +39,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             modules::file_operations::save_file,
             modules::file_operations::load_file,
-            modules::file_operations::open_directory
+            modules::file_operations::open_directory,
+            modules::file_operations::read_directory_contents
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

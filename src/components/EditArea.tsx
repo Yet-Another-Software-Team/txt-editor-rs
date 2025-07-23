@@ -35,9 +35,6 @@ function EditArea() {
     return numbers;
   }, [lineCount]);
 
-  const saveFile = () => {invoke("save_file", {fileContent: content});}
-  const loadFile = () => {invoke("load_file")}
-
   type FileLoaded = {
     fileName: string,
     content: string
@@ -48,7 +45,7 @@ function EditArea() {
   })
 
   listen<FileLoaded>('save', (e) => {
-    saveFile()
+    invoke("save_file", {fileContent: content})
   })
 
   return (
