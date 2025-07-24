@@ -9,10 +9,10 @@ pub fn run() {
     use tauri::Manager;
     tauri::Builder::default()
         .setup(|app| {
-            app.manage(Mutex::new(modules::AppData { project_path: None }));
+            app.manage(Mutex::new(modules::AppData { project_path: None, open_files: Vec::new() }));
+            // TODO: Move menu and title bar to tsx.
             let file_menu = SubmenuBuilder::new(app, "File")
-                .text("save", "Save")
-                .text("open", "Open")
+                .text("save", "Save") 
                 .text("open_dir", "Open Folder")
                 .text("quit", "Quit")
                 .build()?;

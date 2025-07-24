@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::fs::{read_dir, read_to_string, write};
 use std::path::{Path, PathBuf};
 use serde::Serialize;
@@ -7,8 +9,18 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 
 use super::AppData;
 
+/// Save a file to machine
+/// 
+/// using file_path to determine whether using Tauri Dialog or save it to path specified from frontend. 
 #[tauri::command]
-pub fn save_file(app: AppHandle, file_content: String) -> Result<(), String>  {
+pub fn save_file(app: AppHandle, file_content: String, file_path: Option<String>) -> Result<String, String> {
+    return if file_path.is_none() {save_file_dialog(app, file_content)} else {save_file_path(file_content, file_path.unwrap())}
+}
+
+/// Save file via Dialog
+/// 
+/// Using Tauri Dialog to select location and file name to be saved to.
+fn save_file_dialog(app: AppHandle, file_content: String)  -> Result<String, String> {
     let file_path = match app
         .dialog()
         .file()
@@ -26,28 +38,53 @@ pub fn save_file(app: AppHandle, file_content: String) -> Result<(), String>  {
         None => return Err("File save dialog was cancelled or failed.".to_string())
     };
 
-    let write_res = write(&path, file_content);
+     let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("File")
+        .to_string();
 
-    if write_res.is_err() {
-        return write_res.map_err(|e| format!("Failed to save file: {:?}", e))
-    };
+    let write_res = write(&path, file_content);    
 
-    Ok(())
+    match write_res {
+        Ok(_) => return Ok(format!("{} saved successfully", file_name)),
+        Err(e) => return Err(e.to_string()) 
+    }
+
+
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct FileData {
-    file_name: String,
-    content: String
+/// Save file via the path given by string.
+fn save_file_path(file_content: String, path_str: String) -> Result<String, String> {
+    let path_buf = PathBuf::from(path_str);
+    let path = path_buf.as_path();
+
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("File")
+        .to_string();
+
+    let write_res = write(&path, file_content);    
+
+    match write_res {
+        Ok(_) => return Ok(format!("{} saved successfully", file_name)),
+        Err(e) => return Err(e.to_string()) 
+    }
 }
 
+/// Tauri command to load file from machine.
+/// 
+/// Tauri command allows optionally path if path is passed, function will invoke load_path(), otherwise load_dialog()
 #[tauri::command]
-pub fn load_file(app: AppHandle, path: Option<String>) -> Result<(), String> {
-    return if path.is_none() { load_dialog(app) } else { load_path(app, path.unwrap()) }
+pub fn load_file(app: AppHandle, path: Option<String>) -> Result<(String, String), String> {
+    return if path.is_none() { load_dialog(app) } else { load_path(path.unwrap()) }
 }
 
-fn load_dialog(app: AppHandle) -> Result<(), String> {
+/// Open Tauri Dialog and load file content from it.
+/// 
+/// Using Tauri Dialog Plugin to allows user to pick the file from any user's machine to load contents from.
+fn load_dialog(app: AppHandle) -> Result<(String, String), String> {
     let file_path = match app
         .dialog()
         .file()
@@ -70,15 +107,14 @@ fn load_dialog(app: AppHandle) -> Result<(), String> {
     
     let content = get_file_content(path).unwrap_or(String::from(""));
     
-    app.emit("file-loaded", FileData {
-        file_name,
-        content
-    }).map_err(|e| format!("Failed to emit event: {}", e))?;
-    
-    Ok(())
+    Ok((file_name, content))
 }
 
-fn load_path(app: AppHandle, path_str: String) -> Result<(), String> {
+/// Load file form path
+/// 
+/// This function get use path string to get the file content from specified path
+fn load_path(path_str: String) -> Result<(String, String), String> {
+    
     let path_buf = PathBuf::from(path_str);
     let path =  path_buf.as_path();
     let file_name = path
@@ -89,11 +125,7 @@ fn load_path(app: AppHandle, path_str: String) -> Result<(), String> {
 
     let content = get_file_content(path).unwrap_or(String::from(""));
 
-    app.emit("file-loaded", FileData {
-        file_name,
-        content
-    }).map_err(|e| format!("Failed to emit event: {}", e))?;
-    Ok(())
+    Ok((file_name, content))
 }
 
 fn get_file_content(path: &Path) -> Option<String> {
@@ -132,7 +164,7 @@ pub fn open_directory(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn read_directory_contents(app: AppHandle, path: String) -> Result<Vec<(String, bool)>, String> {
+pub fn read_directory_contents(path: String) -> Result<Vec<(String, bool)>, String> {
     let paths = match read_dir(&path) {
         Ok(paths) => paths,
         Err(e) => return Err(format!("Error reading directory: {}", e)),
