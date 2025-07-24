@@ -2,7 +2,6 @@
 
 use std::fs::{read_dir, read_to_string, write};
 use std::path::{Path, PathBuf};
-use serde::Serialize;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, FilePath};
@@ -77,14 +76,14 @@ fn save_file_path(file_content: String, path_str: String) -> Result<String, Stri
 /// 
 /// Tauri command allows optionally path if path is passed, function will invoke load_path(), otherwise load_dialog()
 #[tauri::command]
-pub fn load_file(app: AppHandle, path: Option<String>) -> Result<(String, String), String> {
+pub fn load_file(app: AppHandle, path: Option<String>) -> Result<(String, String, String), String> {
     return if path.is_none() { load_dialog(app) } else { load_path(path.unwrap()) }
 }
 
 /// Open Tauri Dialog and load file content from it.
 /// 
 /// Using Tauri Dialog Plugin to allows user to pick the file from any user's machine to load contents from.
-fn load_dialog(app: AppHandle) -> Result<(String, String), String> {
+fn load_dialog(app: AppHandle) -> Result<(String, String, String), String> {
     let file_path = match app
         .dialog()
         .file()
@@ -107,13 +106,13 @@ fn load_dialog(app: AppHandle) -> Result<(String, String), String> {
     
     let content = get_file_content(path).unwrap_or(String::from(""));
     
-    Ok((file_name, content))
+    Ok((file_name, path.to_str().unwrap().to_string(), content))
 }
 
 /// Load file form path
 /// 
 /// This function get use path string to get the file content from specified path
-fn load_path(path_str: String) -> Result<(String, String), String> {
+fn load_path(path_str: String) -> Result<(String, String, String), String> {
     
     let path_buf = PathBuf::from(path_str);
     let path =  path_buf.as_path();
@@ -125,7 +124,7 @@ fn load_path(path_str: String) -> Result<(String, String), String> {
 
     let content = get_file_content(path).unwrap_or(String::from(""));
 
-    Ok((file_name, content))
+    Ok((file_name, path.to_str().unwrap().to_string(), content))
 }
 
 fn get_file_content(path: &Path) -> Option<String> {

@@ -24,7 +24,7 @@ pub fn run() {
 
             app.on_menu_event(move |app_handle: &tauri::AppHandle, event| {
                     match event.id().0.as_str() {
-                        "save" => {app_handle.clone().emit("save", "").unwrap()},
+                        "save" => {app_handle.clone().emit("save", "current").unwrap()},
                         "open" => {let _ = modules::file_operations::load_file(app_handle.clone(), None); },
                         "open_dir" => {let _ = modules::file_operations::open_directory(app_handle.clone()); },
                         "quit" => {app_handle.clone().exit(0);},

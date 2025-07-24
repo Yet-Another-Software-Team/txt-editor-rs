@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import EditArea from "./components/EditArea";
 import { listen } from "@tauri-apps/api/event";
+import EditArea from "./components/EditArea";
 import React, { useState, useEffect } from "react";
 import path from 'path-browserify'; 
 
@@ -27,6 +27,17 @@ const App: React.FC = () => {
   const [directoryContents, setDirectoryContents] = useState<DirContents[]>([]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [expandedContents, setExpandedContents] = useState<Record<string, DirContents[]>>({});
+  const [filePath, setFilePath] = useState('');
+  const [fileContent, setFileContent] = useState('');
+
+  function save() {
+    if (filePath.trim() === '') {
+      invoke("save_file", {fileContent: fileContent});
+    } 
+    else {
+      invoke("save_file", {fileContent: fileContent, filePath: filePath});
+    }
+  }
 
   // Effect to load initial directory contents when the originPath changes
   useEffect(() => {
@@ -56,6 +67,15 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const unlisten = listen('save', () => {
+      save()
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  })
+
   /**
    * Handles the click event for toggling (expanding/collapsing) a directory.
    * @param fullPath The full path of the item that was clicked.
@@ -64,8 +84,10 @@ const App: React.FC = () => {
   const handleToggleFolder = async (fullPath: string, isDirectory: boolean) => {
     if (!isDirectory) {
       console.log(`Clicked on file: ${fullPath}`);
-      invoke("load_file", {path: fullPath})
-        .catch(err => console.error("Error loading file:", err));
+      let file: [string, string, string] = await invoke("load_file", {path: fullPath});
+      console.log(file);
+      setFilePath(file[1]);
+      setFileContent(file[2]);
       return;
     }
 
@@ -91,6 +113,7 @@ const App: React.FC = () => {
       // Add the directory's full path to the expandedPaths set
       setExpandedPaths((prev) => new Set(prev).add(fullPath));
     }
+
   };
 
   /**
@@ -157,7 +180,7 @@ const App: React.FC = () => {
       </div>
 
       <div className="flex-1">
-        <EditArea />
+        <EditArea filePath={filePath} originPath={originPath} content={fileContent} setContent={setFileContent}/>
       </div>
     </div>
   );
