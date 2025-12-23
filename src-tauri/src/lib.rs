@@ -11,7 +11,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(Mutex::new(modules::AppData {
                 project_path: None,
-                open_files: Vec::new(),
+                opened_files: Vec::new(),
             }));
             // TODO: Move menu and title bar to tsx.
             let file_menu = SubmenuBuilder::new(app, "File")

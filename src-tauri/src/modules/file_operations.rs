@@ -1,11 +1,19 @@
 #![allow(dead_code)]
 
+use sha2::{Digest, Sha256};
 use std::fs::{read_dir, read_to_string, write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::AppData;
+
+/// Compute SHA256 hash of content
+fn compute_hash(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    format!("{:x}", hasher.finalize())
+}
 
 /// Save a file to machine using the provided file path
 #[tauri::command]
@@ -29,7 +37,7 @@ pub fn save_file_to_path(file_content: String, file_path: String) -> Result<Stri
 
 /// Load file from the specified path
 #[tauri::command]
-pub fn load_file_from_path(path_str: String) -> Result<(String, String, String), String> {
+pub fn load_file_from_path(app: AppHandle, path_str: String) -> Result<(String, String, String), String> {
     let path_buf = PathBuf::from(path_str);
     let path = path_buf.as_path();
     let file_name = path
@@ -39,6 +47,14 @@ pub fn load_file_from_path(path_str: String) -> Result<(String, String, String),
         .to_string();
 
     let content = get_file_content(path).unwrap_or(String::from(""));
+    
+    
+    // Store the state of the file.
+    let state = app.state::<Mutex<AppData>>();
+    let mut data = state.lock().unwrap();
+    
+    let hash = compute_hash(&content);
+    data.opened_files.push((path_buf.clone(), hash)); 
 
     Ok((file_name, path.to_str().unwrap().to_string(), content))
 }
@@ -84,4 +100,29 @@ pub fn read_directory_contents(path: String) -> Result<Vec<(String, bool)>, Stri
     }
 
     Ok(contents)
+}
+
+#[tauri::command]
+pub fn is_dirty(app: AppHandle, path: String) -> bool {
+    let state = app.state::<Mutex<AppData>>();
+    let data = state.lock().unwrap();
+
+    let path_buf = PathBuf::from(&path);
+
+    let stored_content = data
+        .opened_files
+        .iter()
+        .find(|(file_path, _)| file_path == &path_buf)
+        .map(|(_, content)| content.clone());
+
+    let Some(stored) = stored_content else {
+        return false;
+    };
+
+    let current_content = get_file_content(&path_buf).unwrap_or_default();
+
+    let stored_hash = compute_hash(&stored);
+    let current_hash = compute_hash(&current_content);
+
+    current_hash != stored_hash
 }
