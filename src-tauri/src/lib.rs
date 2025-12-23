@@ -9,11 +9,8 @@ pub fn run() {
     use tauri::Manager;
     tauri::Builder::default()
         .setup(|app| {
-            app.manage(Mutex::new(modules::AppData {
-                project_path: None,
-                opened_files: Vec::new(),
-            }));
-            // TODO: Move menu and title bar to tsx.
+            app.manage(Mutex::new(modules::AppData { project_path: None }));
+
             let file_menu = SubmenuBuilder::new(app, "File")
                 .text("save", "Save")
                 .text("open_dir", "Open Folder")
@@ -23,22 +20,17 @@ pub fn run() {
 
             app.set_menu(menu)?;
 
-            app.on_menu_event(move |app_handle: &tauri::AppHandle, event| {
-                match event.id().0.as_str() {
-                    "save" => app_handle.clone().emit("save", "current").unwrap(),
-                    "open" => {
-                        // Dialog will be handled by frontend JavaScript
-                        app_handle.clone().emit("open-file-dialog", ()).unwrap();
-                    }
-                    "open_dir" => {
-                        // Dialog will be handled by frontend JavaScript
-                        app_handle.clone().emit("open-folder-dialog", ()).unwrap();
-                    }
-                    "quit" => {
-                        app_handle.clone().exit(0);
-                    }
-                    _ => eprintln!("unexpected menu event"),
+            app.on_menu_event(move |app_handle, event| match event.id().0.as_str() {
+                "save" => {
+                    let _ = app_handle.emit("save", ());
                 }
+                "open_dir" => {
+                    let _ = app_handle.emit("open-folder-dialog", ());
+                }
+                "quit" => {
+                    app_handle.exit(0);
+                }
+                _ => {}
             });
 
             Ok(())

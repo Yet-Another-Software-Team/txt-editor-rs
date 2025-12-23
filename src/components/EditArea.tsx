@@ -1,26 +1,23 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import path from "path-browserify";
 
 interface EditAreaProps {
   filePath: string;
-  originPath: string;
   content: string;
   setContent: React.Dispatch<React.SetStateAction<string>>;
 }
 
-function EditArea({
-  filePath,
-  originPath,
-  content,
-  setContent,
-}: EditAreaProps) {
+const DIRTY_CHECK_DEBOUNCE_MS = 500;
+
+function EditArea({ filePath, content, setContent }: EditAreaProps) {
   const [lineCount, setLineCount] = useState<number>(1);
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [isChecking, setIsChecking] = useState<boolean>(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
-  const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const checkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setLineCount(content.split("\n").length);
@@ -42,18 +39,18 @@ function EditArea({
     checkTimeoutRef.current = setTimeout(async () => {
       setIsChecking(true);
       try {
-        const dirty: boolean = await invoke("is_dirty", {
+        const result = await invoke<boolean>("is_dirty", {
           path: filePath,
           currentContent: content,
         });
-        setIsDirty(dirty);
+        setIsDirty(result);
       } catch (error) {
         console.error("Error checking dirty state:", error);
         setIsDirty(false);
       } finally {
         setIsChecking(false);
       }
-    }, 500); // 500ms debounce
+    }, DIRTY_CHECK_DEBOUNCE_MS);
 
     return () => {
       if (checkTimeoutRef.current) {
@@ -80,7 +77,6 @@ function EditArea({
   // Synchronize scrolling between the textarea and the line numbers
   const handleScroll = useCallback(() => {
     if (textareaRef.current && lineNumbersRef.current) {
-      // Set the scroll position of the line numbers div to match the textarea
       lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
     }
   }, []);
@@ -101,27 +97,22 @@ function EditArea({
     return numbers;
   }, [lineCount]);
 
-  const cleanFileName = () => {
-    let origin_removed = filePath.replace(originPath, "");
-    if (origin_removed === filePath) {
-      return filePath;
-    }
-
-    return origin_removed.substring(1, origin_removed.length);
-  };
-
-  const getDirtyIndicator = () => {
-    return isDirty ? "●" : "";
+  // Extract just the file name for display
+  const getDisplayFileName = (): string => {
+    if (!filePath) return "";
+    return path.basename(filePath);
   };
 
   return (
     <div>
       <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-800">{cleanFileName()}</span>
+          <span className="font-medium text-gray-800">
+            {getDisplayFileName()}
+          </span>
           {isDirty && (
             <span className="text-red-500 text-lg" title="Unsaved changes">
-              {getDirtyIndicator()}
+              ●
             </span>
           )}
         </div>
