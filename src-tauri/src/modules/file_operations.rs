@@ -8,16 +8,22 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use super::AppData;
 
-/// Compute SHA256 hash of content
+/// Compute SHA256 hash of content (normalizes line endings)
 fn compute_hash(content: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(content);
+    // Normalize line endings to LF for consistent hashing
+    let normalized = content.replace("\r\n", "\n");
+    hasher.update(&normalized);
     format!("{:x}", hasher.finalize())
 }
 
 /// Save a file to machine using the provided file path
 #[tauri::command]
-pub fn save_file_to_path(file_content: String, file_path: String) -> Result<String, String> {
+pub fn save_file_to_path(
+    app: AppHandle,
+    file_content: String,
+    file_path: String,
+) -> Result<String, String> {
     let path_buf = PathBuf::from(file_path);
     let path = path_buf.as_path();
 
@@ -27,17 +33,39 @@ pub fn save_file_to_path(file_content: String, file_path: String) -> Result<Stri
         .unwrap_or("File")
         .to_string();
 
-    let write_res = write(&path, file_content);
+    let write_res = write(&path, file_content.clone());
 
     match write_res {
-        Ok(_) => Ok(format!("{} saved successfully", file_name)),
+        Ok(_) => {
+            // Update the file state in AppData
+            let state = app.state::<Mutex<AppData>>();
+            let mut data = state.lock().unwrap();
+
+            let hash = compute_hash(&file_content);
+
+            // Update existing entry or add new one
+            if let Some(entry) = data
+                .opened_files
+                .iter_mut()
+                .find(|(file_path, _)| file_path == &path_buf)
+            {
+                entry.1 = hash;
+            } else {
+                data.opened_files.push((path_buf, hash));
+            }
+
+            Ok(format!("{} saved successfully", file_name))
+        }
         Err(e) => Err(e.to_string()),
     }
 }
 
 /// Load file from the specified path
 #[tauri::command]
-pub fn load_file_from_path(app: AppHandle, path_str: String) -> Result<(String, String, String), String> {
+pub fn load_file_from_path(
+    app: AppHandle,
+    path_str: String,
+) -> Result<(String, String, String), String> {
     let path_buf = PathBuf::from(path_str);
     let path = path_buf.as_path();
     let file_name = path
@@ -47,14 +75,13 @@ pub fn load_file_from_path(app: AppHandle, path_str: String) -> Result<(String, 
         .to_string();
 
     let content = get_file_content(path).unwrap_or(String::from(""));
-    
-    
+
     // Store the state of the file.
     let state = app.state::<Mutex<AppData>>();
     let mut data = state.lock().unwrap();
-    
+
     let hash = compute_hash(&content);
-    data.opened_files.push((path_buf.clone(), hash)); 
+    data.opened_files.push((path_buf.clone(), hash));
 
     Ok((file_name, path.to_str().unwrap().to_string(), content))
 }
@@ -103,26 +130,16 @@ pub fn read_directory_contents(path: String) -> Result<Vec<(String, bool)>, Stri
 }
 
 #[tauri::command]
-pub fn is_dirty(app: AppHandle, path: String) -> bool {
-    let state = app.state::<Mutex<AppData>>();
-    let data = state.lock().unwrap();
-
+pub fn is_dirty(app: AppHandle, path: String, current_content: String) -> bool {
     let path_buf = PathBuf::from(&path);
 
-    let stored_content = data
-        .opened_files
-        .iter()
-        .find(|(file_path, _)| file_path == &path_buf)
-        .map(|(_, content)| content.clone());
+    // Read the actual file content from disk
+    let disk_content = get_file_content(&path_buf).unwrap_or_default();
 
-    let Some(stored) = stored_content else {
-        return false;
-    };
-
-    let current_content = get_file_content(&path_buf).unwrap_or_default();
-
-    let stored_hash = compute_hash(&stored);
+    // Compute hashes
     let current_hash = compute_hash(&current_content);
+    let disk_hash = compute_hash(&disk_content);
 
-    current_hash != stored_hash
+    // File is dirty if current content differs from what's on disk
+    current_hash != disk_hash
 }

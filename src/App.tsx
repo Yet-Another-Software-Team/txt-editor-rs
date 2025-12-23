@@ -40,7 +40,6 @@ const App: React.FC = () => {
   >({});
   const [filePath, setFilePath] = useState("");
   const [fileContent, setFileContent] = useState("");
-  const [lastSavedContent, setLastSavedContent] = useState("");
 
   async function saveFile() {
     try {
@@ -62,7 +61,6 @@ const App: React.FC = () => {
           });
           console.log(result);
           setFilePath(selectedPath);
-          setLastSavedContent(fileContent);
         }
       } else {
         const result = await invoke("save_file_to_path", {
@@ -70,7 +68,6 @@ const App: React.FC = () => {
           filePath: filePath,
         });
         console.log(result);
-        setLastSavedContent(fileContent);
       }
     } catch (error) {
       console.error("Error saving file:", error);
@@ -99,7 +96,6 @@ const App: React.FC = () => {
         );
         setFilePath(file[1]);
         setFileContent(file[2]);
-        setLastSavedContent(file[2]);
       }
     } catch (error) {
       console.error("Error opening file:", error);
@@ -193,7 +189,6 @@ const App: React.FC = () => {
       console.log(file);
       setFilePath(file[1]);
       setFileContent(file[2]);
-      setLastSavedContent(file[2]);
       return;
     }
 
@@ -305,7 +300,6 @@ const App: React.FC = () => {
           originPath={originPath}
           content={fileContent}
           setContent={setFileContent}
-          lastSavedContent={lastSavedContent}
         />
       </div>
     </div>

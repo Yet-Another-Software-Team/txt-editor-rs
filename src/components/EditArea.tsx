@@ -6,7 +6,6 @@ interface EditAreaProps {
   originPath: string;
   content: string;
   setContent: React.Dispatch<React.SetStateAction<string>>;
-  lastSavedContent: string;
 }
 
 function EditArea({
@@ -14,24 +13,61 @@ function EditArea({
   originPath,
   content,
   setContent,
-  lastSavedContent,
 }: EditAreaProps) {
   const [lineCount, setLineCount] = useState<number>(1);
   const [isDirty, setIsDirty] = useState<boolean>(false);
+  const [isChecking, setIsChecking] = useState<boolean>(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setLineCount(content.split("\n").length);
   }, [content]);
 
-  // Check dirty state whenever content or lastSavedContent changes
+  // Check dirty state by calling backend whenever content changes
+  useEffect(() => {
+    if (!filePath) {
+      setIsDirty(false);
+      return;
+    }
+
+    // Clear existing timeout
+    if (checkTimeoutRef.current) {
+      clearTimeout(checkTimeoutRef.current);
+    }
+
+    // Debounce the dirty check to avoid too many backend calls
+    checkTimeoutRef.current = setTimeout(async () => {
+      setIsChecking(true);
+      try {
+        const dirty: boolean = await invoke("is_dirty", {
+          path: filePath,
+          currentContent: content,
+        });
+        setIsDirty(dirty);
+      } catch (error) {
+        console.error("Error checking dirty state:", error);
+        setIsDirty(false);
+      } finally {
+        setIsChecking(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => {
+      if (checkTimeoutRef.current) {
+        clearTimeout(checkTimeoutRef.current);
+      }
+    };
+  }, [content, filePath]);
+
+  // Reset dirty state when a new file is loaded
   useEffect(() => {
     if (filePath) {
-      setIsDirty(content !== lastSavedContent);
+      setIsDirty(false);
     }
-  }, [content, lastSavedContent, filePath]);
+  }, [filePath]);
 
   // Handle changes in the textarea
   const handleContentChange = useCallback(
@@ -90,7 +126,7 @@ function EditArea({
           )}
         </div>
         <span className="text-xs text-gray-500">
-          {isDirty ? "Unsaved" : "Saved"}
+          {isChecking ? "Checking..." : isDirty ? "Unsaved" : "Saved"}
         </span>
       </div>
       <div className="flex flex-col w-full max-h-screen h-[100vh] bg-gray-800 overflow-hidden">

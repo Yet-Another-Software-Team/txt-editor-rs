@@ -50,7 +50,8 @@ pub fn run() {
             modules::file_operations::save_file_to_path,
             modules::file_operations::load_file_from_path,
             modules::file_operations::set_project_directory,
-            modules::file_operations::read_directory_contents
+            modules::file_operations::read_directory_contents,
+            modules::file_operations::is_dirty
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
