@@ -1,145 +1,65 @@
+use sha2::{Digest, Sha256};
 use std::fs::{read_dir, read_to_string, write};
-use std::path::{Path, PathBuf};
-use serde::Serialize;
-use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_dialog::{DialogExt, FilePath};
+use std::path::PathBuf;
+use tauri::{AppHandle, Emitter};
 
-use super::AppData;
+/// Compute SHA256 hash of content with normalized line endings (LF)
+fn compute_hash(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    // Normalize all line endings to LF for consistent hashing
+    let normalized = content.replace("\r\n", "\n");
+    hasher.update(normalized.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
 
+/// Save a file to disk at the specified path
 #[tauri::command]
-pub fn save_file(app: AppHandle, file_content: String) -> Result<(), String>  {
-    let file_path = match app
-        .dialog()
-        .file()
-        .set_file_name("untitled")
-        .add_filter("Markdown", &["md", "markdown"])
-        .add_filter("Text File", &["txt"])
-        .blocking_save_file() 
-    {
-        Some(fp) => fp,
-        None => return Err("File save dialog was cancelled or failed.".to_string())
-    };
+pub fn save_file_to_path(file_content: String, file_path: String) -> Result<String, String> {
+    let path_buf = PathBuf::from(&file_path);
 
-    let path = match file_path.as_path() {
-        Some(p) => p,
-        None => return Err("File save dialog was cancelled or failed.".to_string())
-    };
+    write(&path_buf, &file_content).map_err(|e| e.to_string())?;
 
-    let write_res = write(&path, file_content);
-
-    if write_res.is_err() {
-        return write_res.map_err(|e| format!("Failed to save file: {:?}", e))
-    };
-
-    Ok(())
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct FileData {
-    file_name: String,
-    content: String
-}
-
-#[tauri::command]
-pub fn load_file(app: AppHandle, path: Option<String>) -> Result<(), String> {
-    return if path.is_none() { load_dialog(app) } else { load_path(app, path.unwrap()) }
-}
-
-fn load_dialog(app: AppHandle) -> Result<(), String> {
-    let file_path = match app
-        .dialog()
-        .file()
-        .blocking_pick_file() 
-    {
-        Some(path) => path,
-        None => return Err("File dialog was cancelled or no file selected".to_string())
-    };
-    
-    let path = match file_path.as_path() {
-        Some(p) => p,
-        None => return Err("File dialog was cancelled or no file selected".to_string())
-    };
-
-    let file_name = path
+    let file_name = path_buf
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("Unknown")
+        .unwrap_or("File")
         .to_string();
-    
-    let content = get_file_content(path).unwrap_or(String::from(""));
-    
-    app.emit("file-loaded", FileData {
-        file_name,
-        content
-    }).map_err(|e| format!("Failed to emit event: {}", e))?;
-    
-    Ok(())
+
+    Ok(format!("{} saved successfully", file_name))
 }
 
-fn load_path(app: AppHandle, path_str: String) -> Result<(), String> {
-    let path_buf = PathBuf::from(path_str);
-    let path =  path_buf.as_path();
-    let file_name = path
+/// Load file from the specified path
+#[tauri::command]
+pub fn load_file_from_path(path_str: String) -> Result<(String, String, String), String> {
+    let path_buf = PathBuf::from(&path_str);
+
+    let file_name = path_buf
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("Unknown")
         .to_string();
 
-    let content = get_file_content(path).unwrap_or(String::from(""));
+    let content = read_to_string(&path_buf).map_err(|e| e.to_string())?;
 
-    app.emit("file-loaded", FileData {
-        file_name,
-        content
-    }).map_err(|e| format!("Failed to emit event: {}", e))?;
+    Ok((file_name, path_str, content))
+}
+
+/// Set the project directory path
+#[tauri::command]
+pub fn set_project_directory(app: AppHandle, directory_path: String) -> Result<(), String> {
+    app.emit("folder-selected", &directory_path)
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
-fn get_file_content(path: &Path) -> Option<String> {
-    match read_to_string(&path) {
-        Ok(content) => Some(content),
-        Err(e) => {
-            eprintln!("Failed to load file: {}", e);
-            None
-        }
-    }
-}
-
+/// Read directory contents and return tuples of (path, is_directory)
 #[tauri::command]
-pub fn open_directory(app: AppHandle) -> Result<(), String> {
-    let file_path: FilePath = match app
-        .dialog()
-        .file()
-        .blocking_pick_folder()
-         
-    {
-        Some(path) => path,
-        None => return Err("File dialog was cancelled or no file selected".to_string())
-    };
-
-    let path = match file_path.as_path() {
-        Some(p) => p,
-        None => return Err("File dialog was cancelled or no file selected".to_string())
-    };
-
-    println!("Open folder: {}", path.display());
-    let state= app.state::<Mutex<AppData>>();
-    let mut data = state.lock().unwrap();
-    data.project_path = Some(path.to_path_buf()); // Convert to PathBuf
-    app.emit("folder-selected", path.display().to_string()).unwrap();
-    Ok(())
-}
-
-#[tauri::command]
-pub fn read_directory_contents(app: AppHandle, path: String) -> Result<Vec<(String, bool)>, String> {
-    let paths = match read_dir(&path) {
-        Ok(paths) => paths,
-        Err(e) => return Err(format!("Error reading directory: {}", e)),
-    };
+pub fn read_directory_contents(path: String) -> Result<Vec<(String, bool)>, String> {
+    let entries = read_dir(&path).map_err(|e| format!("Error reading directory: {}", e))?;
 
     let mut contents = Vec::new();
-    for entry in paths {
+    for entry in entries {
         if let Ok(entry) = entry {
             let path = entry.path();
             let is_dir = path.is_dir();
@@ -147,6 +67,24 @@ pub fn read_directory_contents(app: AppHandle, path: String) -> Result<Vec<(Stri
             contents.push((file_name, is_dir));
         }
     }
-    
+
     Ok(contents)
+}
+
+/// Check if file content differs from what's on disk using hash comparison
+/// Normalizes line endings to LF for consistent comparison across platforms
+#[tauri::command]
+pub fn is_dirty(path: String, current_content: String) -> bool {
+    // Read the actual file content from disk
+    let disk_content = match read_to_string(&path) {
+        Ok(content) => content,
+        Err(_) => return true, // If we can't read the file, consider it dirty
+    };
+
+    // Compute hashes with normalized line endings
+    let current_hash = compute_hash(&current_content);
+    let disk_hash = compute_hash(&disk_content);
+
+    // File is dirty if hashes differ
+    current_hash != disk_hash
 }
