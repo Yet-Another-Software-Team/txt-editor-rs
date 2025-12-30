@@ -62,6 +62,10 @@ function EditArea({ filePath, content, setContent }: EditAreaProps) {
         viewRef.current.destroy();
         viewRef.current = null;
       }
+      // Clear the DOM element to prevent duplicates on remount
+      if (editorRef.current) {
+        editorRef.current.innerHTML = "";
+      }
     };
   }, []); // Only run once on mount
 
