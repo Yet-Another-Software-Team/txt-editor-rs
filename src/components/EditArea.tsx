@@ -1,6 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import path from "path-browserify";
+import { EditorView, basicSetup } from "codemirror";
+import { EditorState, StateEffect } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { getLanguageExtension } from "../utils";
 
 interface EditAreaProps {
   filePath: string;
@@ -11,17 +15,98 @@ interface EditAreaProps {
 const DIRTY_CHECK_DEBOUNCE_MS = 500;
 
 function EditArea({ filePath, content, setContent }: EditAreaProps) {
-  const [lineCount, setLineCount] = useState<number>(1);
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [isChecking, setIsChecking] = useState<boolean>(false);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
   const checkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Initialize CodeMirror editor
   useEffect(() => {
-    setLineCount(content.split("\n").length);
-  }, [content]);
+    if (!editorRef.current) return;
+
+    const initEditor = async () => {
+      const languageExt = await getLanguageExtension(filePath);
+
+      // Create editor state
+      const state = EditorState.create({
+        doc: content,
+        extensions: [
+          basicSetup,
+          oneDark,
+          languageExt,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              const newContent = update.state.doc.toString();
+              setContent(newContent);
+            }
+          }),
+          EditorView.lineWrapping,
+        ],
+      });
+
+      // Create editor view
+      const view = new EditorView({
+        state,
+        parent: editorRef.current!,
+      });
+
+      viewRef.current = view;
+    };
+
+    initEditor();
+
+    return () => {
+      if (viewRef.current) {
+        viewRef.current.destroy();
+        viewRef.current = null;
+      }
+      // Clear the DOM element to prevent duplicates on remount
+      if (editorRef.current) {
+        editorRef.current.innerHTML = "";
+      }
+    };
+  }, []); // Only run once on mount
+
+  // Update editor content when filePath changes (new file loaded)
+  useEffect(() => {
+    if (viewRef.current && filePath) {
+      const updateFile = async () => {
+        const currentContent = viewRef.current!.state.doc.toString();
+        if (currentContent !== content) {
+          viewRef.current!.dispatch({
+            changes: {
+              from: 0,
+              to: currentContent.length,
+              insert: content,
+            },
+          });
+        }
+
+        // Update language extension based on new file
+        const languageExt = await getLanguageExtension(filePath);
+        viewRef.current!.dispatch({
+          effects: StateEffect.reconfigure.of([
+            basicSetup,
+            oneDark,
+            languageExt,
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                const newContent = update.state.doc.toString();
+                setContent(newContent);
+              }
+            }),
+            EditorView.lineWrapping,
+          ]),
+        });
+
+        setIsDirty(false);
+      };
+
+      updateFile();
+    }
+  }, [filePath]);
 
   // Check dirty state by calling backend whenever content changes
   useEffect(() => {
@@ -59,44 +144,6 @@ function EditArea({ filePath, content, setContent }: EditAreaProps) {
     };
   }, [content, filePath]);
 
-  // Reset dirty state when a new file is loaded
-  useEffect(() => {
-    if (filePath) {
-      setIsDirty(false);
-    }
-  }, [filePath]);
-
-  // Handle changes in the textarea
-  const handleContentChange = useCallback(
-    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setContent(event.target.value);
-    },
-    [setContent],
-  );
-
-  // Synchronize scrolling between the textarea and the line numbers
-  const handleScroll = useCallback(() => {
-    if (textareaRef.current && lineNumbersRef.current) {
-      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
-    }
-  }, []);
-
-  // Generate line number elements
-  const renderLineNumbers = useCallback(() => {
-    const numbers = [];
-    for (let i = 1; i <= lineCount; i++) {
-      numbers.push(
-        <div
-          key={i}
-          className="line-number h-6 flex items-center justify-end pr-2"
-        >
-          {i}
-        </div>,
-      );
-    }
-    return numbers;
-  }, [lineCount]);
-
   // Extract just the file name for display
   const getDisplayFileName = (): string => {
     if (!filePath) return "";
@@ -104,7 +151,8 @@ function EditArea({ filePath, content, setContent }: EditAreaProps) {
   };
 
   return (
-    <div>
+    <div className="flex flex-col w-full h-full">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-800">
@@ -116,33 +164,22 @@ function EditArea({ filePath, content, setContent }: EditAreaProps) {
             </span>
           )}
         </div>
-        <span className="text-xs text-gray-500">
-          {isChecking ? "Checking..." : isDirty ? "Unsaved" : "Saved"}
-        </span>
-      </div>
-      <div className="flex flex-col w-full max-h-screen h-[100vh] bg-gray-800 overflow-hidden">
-        {/* Editor Wrapper: Contains line numbers and textarea */}
-        <div className="flex flex-1 overflow-hidden relative">
-          {/* Line Numbers Pane */}
-          <div
-            className="flex-shrink-0 w-12 bg-gray-50 text-gray-500 text-sm text-right px-5 py-2 border-r border-gray-200 overflow-hidden select-none resize-x"
-            ref={lineNumbersRef}
-          >
-            {renderLineNumbers()}
-          </div>
-
-          {/* Text Input Area */}
-          <textarea
-            ref={textareaRef}
-            className="flex-1 w-full p-2 text-base leading-6 bg-white resize-none overflow-y-auto text-nowrap focus:outline-none focus:ring-0"
-            value={content}
-            onChange={handleContentChange}
-            onScroll={handleScroll}
-            placeholder="Start typing here..."
-            spellCheck={false}
-          />
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-gray-500">
+            {isChecking ? "Checking..." : isDirty ? "Unsaved" : "Saved"}
+          </span>
+          <span className="text-xs text-gray-400">
+            Ctrl+Z: Undo | Ctrl+Y: Redo
+          </span>
         </div>
       </div>
+
+      {/* CodeMirror Editor Container */}
+      <div
+        ref={editorRef}
+        className="flex-1 overflow-auto"
+        style={{ height: "calc(100vh - 48px)" }}
+      />
     </div>
   );
 }

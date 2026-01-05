@@ -1,1 +1,32 @@
 @import "tailwindcss";
+
+/* CodeMirror custom styles */
+.cm-editor {
+    height: 100%;
+    font-size: 14px;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+}
+
+.cm-scroller {
+    overflow: auto;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+}
+
+.cm-content {
+    padding: 8px 0;
+}
+
+.cm-line {
+    padding: 0 4px;
+}
+
+/* Make sure the editor takes full height */
+.cm-editor.cm-focused {
+    outline: none;
+}
+
+/* Gutters (line numbers) styling */
+.cm-gutters {
+    background-color: #282c34;
+    border-right: 1px solid #3e4451;
+}
