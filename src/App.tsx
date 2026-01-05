@@ -237,6 +237,7 @@ const App: React.FC = () => {
 
       <div className="flex-1">
         <EditArea
+          key={filePath}
           filePath={filePath}
           content={fileContent}
           setContent={setFileContent}
